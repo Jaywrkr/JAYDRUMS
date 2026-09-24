@@ -254,12 +254,21 @@ table.log th {
 
 .note {
   position: absolute;
+  border-radius: 4px;
+}
+
+.note--vertical {
   left: 15%;
   right: 15%;
   height: 12px;
-  border-radius: 4px;
-  background: #5aa9e6;
   top: -20px;
+}
+
+.note--horizontal {
+  top: 18%;
+  bottom: 18%;
+  width: 14px;
+  left: -20px;
 }
 
 .note--fade {
@@ -281,4 +290,94 @@ table.log th {
 
 .note--miss {
   background: #e07a7a;
+}
+
+/* Orientación horizontal: los carriles se apilan y las notas viajan de derecha a izquierda */
+.lanes--horizontal {
+  flex-direction: column;
+  height: auto;
+}
+
+.lane--horizontal {
+  height: 74px;
+}
+
+.lane--horizontal .lane-label {
+  left: 0;
+  right: auto;
+  top: 0;
+  bottom: 0;
+  width: 120px;
+  display: flex;
+  align-items: center;
+  padding-left: 0.6rem;
+  background: linear-gradient(90deg, #12141a 60%, transparent);
+  text-align: left;
+}
+
+.hit-line--horizontal {
+  left: 40px;
+  right: auto;
+  top: 0;
+  bottom: 0;
+  width: 2px;
+  height: auto;
+}
+
+.game-options {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 0.9rem;
+  flex-wrap: wrap;
+}
+
+.orientation-toggle {
+  display: flex;
+  gap: 0.4rem;
+}
+
+.orient-btn {
+  background: #12141a;
+  color: #9a9ea8;
+  border: 1px solid #2a2e38;
+  border-radius: 6px;
+  padding: 0.4rem 0.8rem;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.orient-btn--active {
+  color: #e8e8ec;
+  border-color: #f5c04a;
+}
+
+.orient-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.metronome-toggle {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+  color: #9a9ea8;
+  cursor: pointer;
+}
+
+.progress-track {
+  height: 6px;
+  background: #12141a;
+  border-radius: 3px;
+  margin-top: 1rem;
+  overflow: hidden;
+}
+
+.progress-fill {
+  height: 100%;
+  width: 0%;
+  background: #f5c04a;
+  transition: width 0.1s linear;
 }

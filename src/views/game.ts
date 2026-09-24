@@ -1,19 +1,22 @@
 import { midiHub } from "../midiHub";
-import { labelForPieceId } from "../pieces";
+import { labelForPieceId, colorForPieceId } from "../pieces";
 import { loadMidiMap, buildNoteToPieceMap } from "../storage";
 import { LESSONS } from "../lessons";
+import { scheduleMetronome } from "../metronome";
 import type { Chart } from "../chart";
 import type { MidiEvent } from "../midi";
 import { mountDeviceSelector } from "./deviceSelector";
 
-const TRAVEL_MS = 1800; // tiempo que tarda una nota en bajar desde arriba hasta la línea de golpe
-const HIT_LINE_OFFSET_PX = 40;
+const TRAVEL_MS = 1800; // tiempo que tarda una nota en llegar desde el spawn hasta la línea de golpe
+const HIT_LINE_OFFSET_PX = 40; // vertical: distancia desde abajo. horizontal: distancia desde la izquierda.
 const WINDOW_PERFECT_MS = 30;
 const WINDOW_GOOD_MS = 70;
 const WINDOW_OK_MS = 150;
 const END_BUFFER_MS = TRAVEL_MS + 500;
+const LEAD_IN_MS = 100; // margen para agendar el audio con precisión
 
 type Judgement = "perfect" | "good" | "ok" | "miss";
+type Orientation = "vertical" | "horizontal";
 
 const JUDGEMENT_POINTS: Record<Judgement, number> = {
   perfect: 100,
@@ -41,6 +44,17 @@ export function mountGame(container: HTMLElement): () => void {
         <label for="lesson-select">Lección</label>
         <select id="lesson-select"></select>
 
+        <div class="game-options">
+          <div class="orientation-toggle" role="group" aria-label="Dirección de las notas">
+            <button data-orientation="vertical" class="orient-btn orient-btn--active">↓ Arriba a abajo</button>
+            <button data-orientation="horizontal" class="orient-btn">← Derecha a izquierda</button>
+          </div>
+          <label class="metronome-toggle">
+            <input type="checkbox" id="metronome-toggle" checked />
+            Metrónomo
+          </label>
+        </div>
+
         <div class="game-controls">
           <button id="start-btn">Empezar</button>
           <div class="game-stats">
@@ -49,6 +63,7 @@ export function mountGame(container: HTMLElement): () => void {
             <span>Precisión: <b id="stat-accuracy">—</b></span>
           </div>
         </div>
+        <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
         <p id="game-message" class="status"></p>
       </section>
 
@@ -69,6 +84,9 @@ export function mountGame(container: HTMLElement): () => void {
   const scoreEl = container.querySelector<HTMLElement>("#stat-score")!;
   const streakEl = container.querySelector<HTMLElement>("#stat-streak")!;
   const accuracyEl = container.querySelector<HTMLElement>("#stat-accuracy")!;
+  const progressFillEl = container.querySelector<HTMLDivElement>("#progress-fill")!;
+  const metronomeToggle = container.querySelector<HTMLInputElement>("#metronome-toggle")!;
+  const orientBtns = container.querySelectorAll<HTMLButtonElement>(".orient-btn");
 
   for (const chart of LESSONS) {
     const option = document.createElement("option");
@@ -77,6 +95,7 @@ export function mountGame(container: HTMLElement): () => void {
     lessonSelect.appendChild(option);
   }
 
+  let orientation: Orientation = "vertical";
   let liveNotes: LiveNote[] = [];
   let laneElsByPiece = new Map<string, HTMLDivElement>();
   let startTimestamp = 0;
@@ -87,6 +106,7 @@ export function mountGame(container: HTMLElement): () => void {
   let bestStreak = 0;
   let judgedCount = 0;
   let hitCount = 0;
+  let audioCtx: AudioContext | null = null;
 
   function currentChart(): Chart {
     return LESSONS.find((c) => c.id === lessonSelect.value) ?? LESSONS[0];
@@ -94,13 +114,16 @@ export function mountGame(container: HTMLElement): () => void {
 
   function buildLanes(chart: Chart): void {
     lanesEl.innerHTML = "";
+    lanesEl.classList.toggle("lanes--horizontal", orientation === "horizontal");
     laneElsByPiece = new Map();
+
     for (const pieceId of chart.lanes) {
       const lane = document.createElement("div");
-      lane.className = "lane";
+      lane.className = orientation === "horizontal" ? "lane lane--horizontal" : "lane";
+      const hitLineClass = orientation === "horizontal" ? "hit-line hit-line--horizontal" : "hit-line";
       lane.innerHTML = `
         <div class="lane-label">${labelForPieceId(pieceId)}</div>
-        <div class="hit-line"></div>
+        <div class="${hitLineClass}"></div>
       `;
       lanesEl.appendChild(lane);
       laneElsByPiece.set(pieceId, lane);
@@ -113,7 +136,8 @@ export function mountGame(container: HTMLElement): () => void {
       const lane = laneElsByPiece.get(note.pieceId);
       if (!lane) continue;
       const el = document.createElement("div");
-      el.className = "note";
+      el.className = orientation === "horizontal" ? "note note--horizontal" : "note note--vertical";
+      el.style.backgroundColor = colorForPieceId(note.pieceId);
       lane.appendChild(el);
       liveNotes.push({ time: note.time, pieceId: note.pieceId, el, judged: null });
     }
@@ -126,6 +150,7 @@ export function mountGame(container: HTMLElement): () => void {
     judgedCount = 0;
     hitCount = 0;
     updateStats();
+    progressFillEl.style.width = "0%";
   }
 
   function updateStats(): void {
@@ -136,8 +161,8 @@ export function mountGame(container: HTMLElement): () => void {
 
   function judgeNote(note: LiveNote, judgement: Judgement): void {
     note.judged = judgement;
-    note.el.classList.add(`note--${judgement}`);
-    note.el.classList.add("note--fade");
+    note.el.style.backgroundColor = "";
+    note.el.classList.add(`note--${judgement}`, "note--fade");
 
     score += JUDGEMENT_POINTS[judgement];
     judgedCount += 1;
@@ -180,10 +205,34 @@ export function mountGame(container: HTMLElement): () => void {
     judgeNote(bestCandidate, judgement);
   }
 
+  function positionNote(note: LiveNote, currentTime: number): void {
+    const progress = 1 - ((note.time - currentTime) * 1000) / TRAVEL_MS;
+
+    if (orientation === "vertical") {
+      const hitY = lanesEl.clientHeight - HIT_LINE_OFFSET_PX;
+      note.el.style.top = `${progress * hitY}px`;
+    } else {
+      const spawnX = lanesEl.clientWidth;
+      const hitX = HIT_LINE_OFFSET_PX;
+      note.el.style.left = `${spawnX - progress * (spawnX - hitX)}px`;
+    }
+  }
+
   function tick(): void {
     const chart = currentChart();
     const currentTime = (performance.now() - startTimestamp) / 1000;
-    const hitLineY = lanesEl.clientHeight - HIT_LINE_OFFSET_PX;
+
+    if (currentTime < 0) {
+      const secondsPerBeat = 60 / chart.bpm;
+      const beatsLeft = Math.ceil(-currentTime / secondsPerBeat);
+      messageEl.textContent = beatsLeft > 0 ? `Preparate… ${beatsLeft}` : "¡Ya!";
+      rafId = requestAnimationFrame(tick);
+      return;
+    }
+
+    if (messageEl.textContent.startsWith("Preparate") || messageEl.textContent === "¡Ya!") {
+      messageEl.textContent = "";
+    }
 
     for (const note of liveNotes) {
       if (note.judged) continue;
@@ -193,9 +242,10 @@ export function mountGame(container: HTMLElement): () => void {
         continue;
       }
 
-      const progress = 1 - ((note.time - currentTime) * 1000) / TRAVEL_MS;
-      note.el.style.top = `${progress * hitLineY}px`;
+      positionNote(note, currentTime);
     }
+
+    progressFillEl.style.width = `${Math.min(100, (currentTime / chart.durationSeconds) * 100)}%`;
 
     if (currentTime * 1000 > chart.durationSeconds * 1000 + END_BUFFER_MS) {
       finish();
@@ -209,8 +259,14 @@ export function mountGame(container: HTMLElement): () => void {
     running = false;
     startBtn.disabled = false;
     lessonSelect.disabled = false;
+    orientBtns.forEach((btn) => (btn.disabled = false));
     const accuracy = judgedCount === 0 ? 0 : Math.round((hitCount / judgedCount) * 100);
     messageEl.textContent = `Terminado. Precisión ${accuracy}% · racha máxima ${bestStreak}.`;
+  }
+
+  function getAudioContext(): AudioContext {
+    if (!audioCtx) audioCtx = new AudioContext();
+    return audioCtx;
   }
 
   function start(): void {
@@ -221,12 +277,40 @@ export function mountGame(container: HTMLElement): () => void {
     messageEl.textContent = "";
     startBtn.disabled = true;
     lessonSelect.disabled = true;
+    orientBtns.forEach((btn) => (btn.disabled = true));
     running = true;
-    startTimestamp = performance.now();
+
+    const secondsPerBeat = 60 / chart.bpm;
+    const countInBeats = chart.beatsPerBar;
+    const countInSeconds = countInBeats * secondsPerBeat;
+
+    // El tiempo 0 del patrón (donde caen las notas) arranca después de la
+    // cuenta de entrada, para que el usuario ya sienta el tempo.
+    startTimestamp = performance.now() + LEAD_IN_MS + countInSeconds * 1000;
+
+    if (metronomeToggle.checked) {
+      const ctx = getAudioContext();
+      void ctx.resume();
+      const audioStart = ctx.currentTime + LEAD_IN_MS / 1000;
+      const chartBeats = Math.round(chart.durationSeconds / secondsPerBeat);
+      scheduleMetronome(ctx, audioStart, chart.bpm, chart.beatsPerBar, countInBeats + chartBeats);
+    }
+
     rafId = requestAnimationFrame(tick);
   }
 
   startBtn.addEventListener("click", start);
+
+  orientBtns.forEach((btn) => {
+    btn.addEventListener("click", () => {
+      orientation = btn.dataset.orientation as Orientation;
+      orientBtns.forEach((b) => b.classList.toggle("orient-btn--active", b === btn));
+      buildLanes(currentChart());
+    });
+  });
+
+  lessonSelect.addEventListener("change", () => buildLanes(currentChart()));
+
   buildLanes(currentChart());
 
   const unsubscribeEvents = midiHub.onEvent(handleMidiEvent);
@@ -236,5 +320,6 @@ export function mountGame(container: HTMLElement): () => void {
     cancelAnimationFrame(rafId);
     unsubscribeEvents();
     unmountSelector();
+    if (audioCtx) void audioCtx.close();
   };
 }

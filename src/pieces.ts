@@ -63,3 +63,25 @@ const PIECES_BY_ID = new Map(DRUM_PIECES.map((piece) => [piece.id, piece]));
 export function labelForPieceId(pieceId: string): string {
   return PIECES_BY_ID.get(pieceId)?.label ?? pieceId;
 }
+
+// Color base de cada pieza antes de ser evaluada (el color de juicio
+// -perfecto/bien/flojo/fallo- lo reemplaza al golpearla).
+export const PIECE_COLORS: Record<string, string> = {
+  kick: "#8a7fe0",
+  snare: "#56c1c9",
+  snare_rim: "#3fa9b3",
+  snare_cross: "#2f8992",
+  tom1: "#c98ee0",
+  tom2: "#b06fd1",
+  tom3: "#8a4fc2",
+  hihat_closed: "#9aa5b1",
+  hihat_bow: "#7c8794",
+  hihat_edge: "#626b76",
+  hihat_pedal: "#4d545c",
+  crash: "#e0b34f",
+  ride: "#d99a3f",
+};
+
+export function colorForPieceId(pieceId: string): string {
+  return PIECE_COLORS[pieceId] ?? "#5aa9e6";
+}
