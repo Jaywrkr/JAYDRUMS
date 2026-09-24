@@ -2,9 +2,10 @@
 
 App web tipo Guitar Hero para batería electrónica (Roland TD-02). Ver `CLAUDE.md` para el contexto completo del proyecto.
 
-## Fase actual: Detector MIDI
+## Fases implementadas
 
-Página que lista los dispositivos MIDI conectados y muestra en vivo cada nota, velocity y Control Change recibido. Sirve para verificar el mapa de tu kit antes de construir la calibración (fase 2).
+1. **Detector MIDI**: lista los dispositivos MIDI conectados y muestra en vivo cada nota, velocity y Control Change recibido. Sirve para verificar el mapa de tu kit.
+2. **Calibración**: flujo guiado pieza por pieza ("Golpea el bombo", "Golpea la caja", …). Guarda la nota recibida para cada pieza en `localStorage` y permite recalibrar una pieza suelta desde la tabla del mapa actual.
 
 ## Requisitos
 

@@ -9,6 +9,30 @@ body {
   color: #e8e8ec;
 }
 
+.tabs {
+  max-width: 900px;
+  margin: 0 auto;
+  padding: 1.5rem 1.5rem 0;
+  display: flex;
+  gap: 0.5rem;
+}
+
+.tab {
+  background: #1b1e26;
+  color: #9a9ea8;
+  border: 1px solid #2a2e38;
+  border-radius: 8px 8px 0 0;
+  padding: 0.6rem 1.2rem;
+  cursor: pointer;
+  font-size: 0.95rem;
+}
+
+.tab--active {
+  background: #12141a;
+  color: #e8e8ec;
+  border-bottom-color: #12141a;
+}
+
 .page {
   max-width: 900px;
   margin: 0 auto;
@@ -117,4 +141,44 @@ table.log td {
 table.log th {
   color: #9a9ea8;
   font-weight: 500;
+}
+
+.calib-progress {
+  color: #9a9ea8;
+  margin: 0 0 0.25rem;
+  font-size: 0.85rem;
+}
+
+.calib-actions {
+  display: flex;
+  gap: 0.5rem;
+  margin-top: 1rem;
+}
+
+.calib-actions button {
+  background: #2a2e38;
+  color: #e8e8ec;
+  border: none;
+  border-radius: 6px;
+  padding: 0.5rem 1rem;
+  cursor: pointer;
+}
+
+.calib-actions button:hover {
+  background: #363b47;
+}
+
+.recalibrate {
+  background: transparent;
+  color: #9a9ea8;
+  border: 1px solid #2a2e38;
+  border-radius: 6px;
+  padding: 0.2rem 0.6rem;
+  cursor: pointer;
+  font-size: 0.8rem;
+}
+
+.recalibrate:hover {
+  color: #e8e8ec;
+  border-color: #363b47;
 }
