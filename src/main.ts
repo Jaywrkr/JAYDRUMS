@@ -2,13 +2,15 @@ import "./style.css";
 import { midiHub } from "./midiHub";
 import { mountDetector } from "./views/detector";
 import { mountCalibration } from "./views/calibration";
+import { mountLatency } from "./views/latency";
 import { mountGame } from "./views/game";
 
-type ViewId = "detector" | "calibration" | "game";
+type ViewId = "detector" | "calibration" | "latency" | "game";
 
 const VIEW_MOUNTERS: Record<ViewId, (container: HTMLElement) => () => void> = {
   detector: mountDetector,
   calibration: mountCalibration,
+  latency: mountLatency,
   game: mountGame,
 };
 
@@ -26,6 +28,7 @@ app.innerHTML = `
   <nav class="tabs">
     <button data-view="detector" class="tab tab--active">Detector</button>
     <button data-view="calibration" class="tab">Calibración</button>
+    <button data-view="latency" class="tab">Latencia</button>
     <button data-view="game" class="tab">Práctica</button>
   </nav>
   <div id="view"></div>

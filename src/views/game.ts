@@ -4,6 +4,7 @@ import { loadMidiMap, buildNoteToPieceMap } from "../storage";
 import { LESSONS } from "../lessons";
 import { scheduleMetronome } from "../metronome";
 import { getBestScore, recordScore } from "../scores";
+import { loadLatencyOffsetMs } from "../latency";
 import type { Chart } from "../chart";
 import type { MidiEvent } from "../midi";
 import { mountDeviceSelector } from "./deviceSelector";
@@ -71,6 +72,10 @@ export function mountGame(container: HTMLElement): () => void {
             <input type="checkbox" id="metronome-toggle" checked />
             Metrónomo
           </label>
+          <label class="speed-control">
+            Velocidad <span id="speed-value">100%</span>
+            <input type="range" id="speed-slider" min="50" max="150" step="5" value="100" />
+          </label>
         </div>
 
         <div class="game-controls">
@@ -117,6 +122,8 @@ export function mountGame(container: HTMLElement): () => void {
   const accuracyEl = container.querySelector<HTMLElement>("#stat-accuracy")!;
   const progressFillEl = container.querySelector<HTMLDivElement>("#progress-fill")!;
   const metronomeToggle = container.querySelector<HTMLInputElement>("#metronome-toggle")!;
+  const speedSlider = container.querySelector<HTMLInputElement>("#speed-slider")!;
+  const speedValueEl = container.querySelector<HTMLSpanElement>("#speed-value")!;
   const orientBtns = container.querySelectorAll<HTMLButtonElement>(".orient-btn");
   const resultsEl = container.querySelector<HTMLDivElement>("#results")!;
   const resultsTitleEl = container.querySelector<HTMLHeadingElement>("#results-title")!;
@@ -148,6 +155,7 @@ export function mountGame(container: HTMLElement): () => void {
   let hitCount = 0;
   let judgementCounts: Record<Judgement, number> = { perfect: 0, good: 0, ok: 0, miss: 0 };
   let audioCtx: AudioContext | null = null;
+  let currentDurationSeconds = 0;
 
   function currentChart(): Chart {
     return LESSONS.find((c) => c.id === lessonSelect.value) ?? LESSONS[0];
@@ -178,7 +186,7 @@ export function mountGame(container: HTMLElement): () => void {
     }
   }
 
-  function buildNotes(chart: Chart): void {
+  function buildNotes(chart: Chart, playbackRate: number): void {
     liveNotes = [];
     for (const note of chart.notes) {
       const lane = laneElsByPiece.get(note.pieceId);
@@ -187,7 +195,7 @@ export function mountGame(container: HTMLElement): () => void {
       el.className = orientation === "horizontal" ? "note note--horizontal" : "note note--vertical";
       el.style.backgroundColor = colorForPieceId(note.pieceId);
       lane.appendChild(el);
-      liveNotes.push({ time: note.time, pieceId: note.pieceId, el, judged: null });
+      liveNotes.push({ time: note.time / playbackRate, pieceId: note.pieceId, el, judged: null });
     }
   }
 
@@ -257,7 +265,8 @@ export function mountGame(container: HTMLElement): () => void {
     const pieceId = noteToPiece[evt.note];
     if (!pieceId) return;
 
-    const currentTime = (performance.now() - startTimestamp) / 1000;
+    const rawCurrentTime = (performance.now() - startTimestamp) / 1000;
+    const currentTime = rawCurrentTime - loadLatencyOffsetMs() / 1000;
 
     let bestCandidate: LiveNote | null = null;
     let bestDiffMs = Infinity;
@@ -290,15 +299,13 @@ export function mountGame(container: HTMLElement): () => void {
     }
   }
 
-  function tick(): void {
-    const chart = currentChart();
+  function tick(effectiveSecondsPerBeat: number): void {
     const currentTime = (performance.now() - startTimestamp) / 1000;
 
     if (currentTime < 0) {
-      const secondsPerBeat = 60 / chart.bpm;
-      const beatsLeft = Math.ceil(-currentTime / secondsPerBeat);
+      const beatsLeft = Math.ceil(-currentTime / effectiveSecondsPerBeat);
       messageEl.textContent = beatsLeft > 0 ? `Preparate… ${beatsLeft}` : "¡Ya!";
-      rafId = requestAnimationFrame(tick);
+      rafId = requestAnimationFrame(() => tick(effectiveSecondsPerBeat));
       return;
     }
 
@@ -317,14 +324,14 @@ export function mountGame(container: HTMLElement): () => void {
       positionNote(note, currentTime);
     }
 
-    progressFillEl.style.width = `${Math.min(100, (currentTime / chart.durationSeconds) * 100)}%`;
+    progressFillEl.style.width = `${Math.min(100, (currentTime / currentDurationSeconds) * 100)}%`;
 
-    if (currentTime * 1000 > chart.durationSeconds * 1000 + END_BUFFER_MS) {
+    if (currentTime * 1000 > currentDurationSeconds * 1000 + END_BUFFER_MS) {
       finish();
       return;
     }
 
-    rafId = requestAnimationFrame(tick);
+    rafId = requestAnimationFrame(() => tick(effectiveSecondsPerBeat));
   }
 
   function finish(): void {
@@ -354,16 +361,20 @@ export function mountGame(container: HTMLElement): () => void {
 
   function start(): void {
     const chart = currentChart();
+    const playbackRate = Number(speedSlider.value) / 100;
+    const effectiveBpm = chart.bpm * playbackRate;
+    const secondsPerBeat = 60 / effectiveBpm;
+
     resetStats();
     buildLanes(chart);
-    buildNotes(chart);
+    buildNotes(chart, playbackRate);
+    currentDurationSeconds = chart.durationSeconds / playbackRate;
     messageEl.textContent = "";
     startBtn.disabled = true;
     lessonSelect.disabled = true;
     orientBtns.forEach((btn) => (btn.disabled = true));
     running = true;
 
-    const secondsPerBeat = 60 / chart.bpm;
     const countInBeats = chart.beatsPerBar;
     const countInSeconds = countInBeats * secondsPerBeat;
 
@@ -375,14 +386,18 @@ export function mountGame(container: HTMLElement): () => void {
       const ctx = getAudioContext();
       void ctx.resume();
       const audioStart = ctx.currentTime + LEAD_IN_MS / 1000;
-      const chartBeats = Math.round(chart.durationSeconds / secondsPerBeat);
-      scheduleMetronome(ctx, audioStart, chart.bpm, chart.beatsPerBar, countInBeats + chartBeats);
+      const chartBeats = Math.round(currentDurationSeconds / secondsPerBeat);
+      scheduleMetronome(ctx, audioStart, effectiveBpm, chart.beatsPerBar, countInBeats + chartBeats);
     }
 
-    rafId = requestAnimationFrame(tick);
+    rafId = requestAnimationFrame(() => tick(secondsPerBeat));
   }
 
   startBtn.addEventListener("click", start);
+
+  speedSlider.addEventListener("input", () => {
+    speedValueEl.textContent = `${speedSlider.value}%`;
+  });
 
   orientBtns.forEach((btn) => {
     btn.addEventListener("click", () => {

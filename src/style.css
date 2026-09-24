@@ -403,6 +403,45 @@ table.log th {
   cursor: pointer;
 }
 
+.speed-control {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.9rem;
+  color: #9a9ea8;
+}
+
+.speed-control input[type="range"] {
+  width: 140px;
+  accent-color: #f5c04a;
+}
+
+#speed-value {
+  color: #e8e8ec;
+  font-weight: 600;
+  min-width: 3.2em;
+}
+
+.beat-dots {
+  display: flex;
+  gap: 0.4rem;
+  margin: 1rem 0;
+  flex-wrap: wrap;
+}
+
+.beat-dot {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: #2a2e38;
+  border: 1px solid #363b47;
+}
+
+.beat-dot--hit {
+  background: #7fd88f;
+  border-color: #7fd88f;
+}
+
 .progress-track {
   height: 6px;
   background: #12141a;
