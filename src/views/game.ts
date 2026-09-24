@@ -5,6 +5,7 @@ import { LESSONS } from "../lessons";
 import { scheduleMetronome } from "../metronome";
 import { getBestScore, recordScore } from "../scores";
 import { loadLatencyOffsetMs } from "../latency";
+import { starsForAccuracy, starGlyphs, celebrationMessage } from "../stars";
 import type { Chart } from "../chart";
 import type { MidiEvent } from "../midi";
 import { mountDeviceSelector } from "./deviceSelector";
@@ -90,6 +91,7 @@ export function mountGame(container: HTMLElement): () => void {
         <p id="game-message" class="status"></p>
 
         <div id="results" class="results" hidden>
+          <div class="stars" id="stars-display"></div>
           <h3 id="results-title"></h3>
           <div class="results-grid">
             <div class="results-stat"><span class="dot dot--perfect"></span>Perfecto <b id="res-perfect">0</b></div>
@@ -126,6 +128,7 @@ export function mountGame(container: HTMLElement): () => void {
   const speedValueEl = container.querySelector<HTMLSpanElement>("#speed-value")!;
   const orientBtns = container.querySelectorAll<HTMLButtonElement>(".orient-btn");
   const resultsEl = container.querySelector<HTMLDivElement>("#results")!;
+  const starsDisplayEl = container.querySelector<HTMLDivElement>("#stars-display")!;
   const resultsTitleEl = container.querySelector<HTMLHeadingElement>("#results-title")!;
   const resultsSummaryEl = container.querySelector<HTMLParagraphElement>("#results-summary")!;
   const resultCountEls: Record<Judgement, HTMLElement> = {
@@ -135,12 +138,30 @@ export function mountGame(container: HTMLElement): () => void {
     miss: container.querySelector<HTMLElement>("#res-miss")!,
   };
 
-  for (const chart of LESSONS) {
-    const option = document.createElement("option");
-    option.value = chart.id;
-    option.textContent = `${chart.name} (${chart.bpm} BPM)`;
-    lessonSelect.appendChild(option);
+  function isLessonUnlocked(index: number): boolean {
+    if (index === 0) return true;
+    return getBestScore(LESSONS[index - 1].id) !== null;
   }
+
+  function renderLessonOptions(): void {
+    const previousValue = lessonSelect.value;
+    lessonSelect.innerHTML = "";
+
+    LESSONS.forEach((chart, index) => {
+      const option = document.createElement("option");
+      option.value = chart.id;
+      const unlocked = isLessonUnlocked(index);
+      option.disabled = !unlocked;
+      option.textContent = unlocked ? `${chart.name} (${chart.bpm} BPM)` : `🔒 ${chart.name}`;
+      lessonSelect.appendChild(option);
+    });
+
+    if (previousValue && isLessonUnlocked(LESSONS.findIndex((c) => c.id === previousValue))) {
+      lessonSelect.value = previousValue;
+    }
+  }
+
+  renderLessonOptions();
 
   let orientation: Orientation = "vertical";
   let liveNotes: LiveNote[] = [];
@@ -164,7 +185,7 @@ export function mountGame(container: HTMLElement): () => void {
   function renderBestScore(): void {
     const best = getBestScore(currentChart().id);
     bestScoreValueEl.textContent = best
-      ? `${best.bestScore} pts · ${best.bestAccuracy}% · racha ${best.bestStreak}`
+      ? `${starGlyphs(starsForAccuracy(best.bestAccuracy))} ${best.bestScore} pts · racha ${best.bestStreak}`
       : "—";
   }
 
@@ -344,14 +365,23 @@ export function mountGame(container: HTMLElement): () => void {
     const previousBest = getBestScore(currentChart().id);
     const result = recordScore(currentChart().id, score, accuracy, bestStreak);
     const isNewBest = !previousBest || result.bestScore === score;
+    const stars = starsForAccuracy(accuracy);
 
-    resultsTitleEl.textContent = isNewBest ? "¡Nuevo mejor puntaje!" : "Lección terminada";
+    starsDisplayEl.innerHTML = starGlyphs(3)
+      .split("")
+      .map(
+        (_, i) =>
+          `<span class="star ${i < stars ? "star--filled" : ""}" style="animation-delay:${i * 0.15}s">★</span>`,
+      )
+      .join("");
+    resultsTitleEl.textContent = celebrationMessage(stars) + (isNewBest ? " ¡Nuevo mejor puntaje!" : "");
     for (const judgement of Object.keys(resultCountEls) as Judgement[]) {
       resultCountEls[judgement].textContent = String(judgementCounts[judgement]);
     }
     resultsSummaryEl.textContent = `${score} puntos · ${accuracy}% de precisión · racha máxima ${bestStreak}.`;
     resultsEl.hidden = false;
     renderBestScore();
+    renderLessonOptions();
   }
 
   function getAudioContext(): AudioContext {
