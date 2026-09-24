@@ -57,3 +57,9 @@ export const DRUM_PIECES: DrumPiece[] = [
   { id: "crash", label: "Crash", instruction: "Golpea el platillo crash", defaultNote: 49 },
   { id: "ride", label: "Ride", instruction: "Golpea el platillo ride", defaultNote: 51 },
 ];
+
+const PIECES_BY_ID = new Map(DRUM_PIECES.map((piece) => [piece.id, piece]));
+
+export function labelForPieceId(pieceId: string): string {
+  return PIECES_BY_ID.get(pieceId)?.label ?? pieceId;
+}

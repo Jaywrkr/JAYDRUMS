@@ -33,3 +33,9 @@ export function setPieceNote(pieceId: string, note: number): MidiMap {
   saveMidiMap(map);
   return map;
 }
+
+export function buildNoteToPieceMap(map: MidiMap): Record<number, string> {
+  const reversed: Record<number, string> = {};
+  for (const [pieceId, note] of Object.entries(map)) reversed[note] = pieceId;
+  return reversed;
+}

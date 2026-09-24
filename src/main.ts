@@ -2,14 +2,22 @@ import "./style.css";
 import { midiHub } from "./midiHub";
 import { mountDetector } from "./views/detector";
 import { mountCalibration } from "./views/calibration";
+import { mountGame } from "./views/game";
 
-type ViewId = "detector" | "calibration";
+type ViewId = "detector" | "calibration" | "game";
+
+const VIEW_MOUNTERS: Record<ViewId, (container: HTMLElement) => () => void> = {
+  detector: mountDetector,
+  calibration: mountCalibration,
+  game: mountGame,
+};
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
 app.innerHTML = `
   <nav class="tabs">
     <button data-view="detector" class="tab tab--active">Detector</button>
     <button data-view="calibration" class="tab">Calibración</button>
+    <button data-view="game" class="tab">Práctica</button>
   </nav>
   <div id="view"></div>
 `;
@@ -22,7 +30,7 @@ let unmountCurrentView: (() => void) | null = null;
 function showView(view: ViewId): void {
   unmountCurrentView?.();
   tabButtons.forEach((btn) => btn.classList.toggle("tab--active", btn.dataset.view === view));
-  unmountCurrentView = view === "detector" ? mountDetector(viewContainer) : mountCalibration(viewContainer);
+  unmountCurrentView = VIEW_MOUNTERS[view](viewContainer);
 }
 
 tabButtons.forEach((btn) => {

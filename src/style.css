@@ -182,3 +182,103 @@ table.log th {
   color: #e8e8ec;
   border-color: #363b47;
 }
+
+.game-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-top: 1rem;
+}
+
+#start-btn {
+  background: #f5c04a;
+  color: #12141a;
+  border: none;
+  border-radius: 6px;
+  padding: 0.5rem 1.4rem;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+#start-btn:disabled {
+  background: #4a4a3a;
+  color: #8a8a80;
+  cursor: default;
+}
+
+.game-stats {
+  display: flex;
+  gap: 1.25rem;
+  color: #9a9ea8;
+  font-size: 0.9rem;
+}
+
+.lanes {
+  display: flex;
+  gap: 0.5rem;
+  height: 420px;
+}
+
+.lane {
+  flex: 1;
+  position: relative;
+  background: #12141a;
+  border: 1px solid #2a2e38;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.lane-label {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  text-align: center;
+  padding: 0.4rem 0.2rem;
+  font-size: 0.8rem;
+  color: #9a9ea8;
+  background: linear-gradient(#12141a, transparent);
+  z-index: 2;
+}
+
+.hit-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 40px;
+  height: 2px;
+  background: #f5c04a;
+  opacity: 0.6;
+}
+
+.note {
+  position: absolute;
+  left: 15%;
+  right: 15%;
+  height: 12px;
+  border-radius: 4px;
+  background: #5aa9e6;
+  top: -20px;
+}
+
+.note--fade {
+  transition: opacity 0.25s ease;
+  opacity: 0;
+}
+
+.note--perfect {
+  background: #7fd88f;
+}
+
+.note--good {
+  background: #5aa9e6;
+}
+
+.note--ok {
+  background: #f5c04a;
+}
+
+.note--miss {
+  background: #e07a7a;
+}
