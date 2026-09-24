@@ -14,6 +14,15 @@ const VIEW_MOUNTERS: Record<ViewId, (container: HTMLElement) => () => void> = {
 
 const app = document.querySelector<HTMLDivElement>("#app")!;
 app.innerHTML = `
+  <header class="app-header">
+    <div class="app-header__brand">
+      <span class="app-header__logo">🥁</span>
+      <div>
+        <h1 class="app-header__title">J-Drums</h1>
+        <p class="app-header__tagline">Batería electrónica, evaluada en tiempo real</p>
+      </div>
+    </div>
+  </header>
   <nav class="tabs">
     <button data-view="detector" class="tab tab--active">Detector</button>
     <button data-view="calibration" class="tab">Calibración</button>

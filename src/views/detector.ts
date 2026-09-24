@@ -8,7 +8,7 @@ const MAX_LOG_ROWS = 200;
 export function mountDetector(container: HTMLElement): () => void {
   container.innerHTML = `
     <div class="page">
-      <h1>J-Drums — Detector MIDI</h1>
+      <h2 class="view-title">Detector MIDI</h2>
       <p class="subtitle">Verifica el mapa MIDI de tu batería antes de calibrar.</p>
 
       <div id="device-selector"></div>

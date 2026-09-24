@@ -3,6 +3,7 @@ import { labelForPieceId, colorForPieceId } from "../pieces";
 import { loadMidiMap, buildNoteToPieceMap } from "../storage";
 import { LESSONS } from "../lessons";
 import { scheduleMetronome } from "../metronome";
+import { getBestScore, recordScore } from "../scores";
 import type { Chart } from "../chart";
 import type { MidiEvent } from "../midi";
 import { mountDeviceSelector } from "./deviceSelector";
@@ -14,6 +15,8 @@ const WINDOW_GOOD_MS = 70;
 const WINDOW_OK_MS = 150;
 const END_BUFFER_MS = TRAVEL_MS + 500;
 const LEAD_IN_MS = 100; // margen para agendar el audio con precisión
+const MAX_MULTIPLIER = 4;
+const COMBO_STEP = 10; // cada 10 golpes seguidos sube el multiplicador
 
 type Judgement = "perfect" | "good" | "ok" | "miss";
 type Orientation = "vertical" | "horizontal";
@@ -23,6 +26,13 @@ const JUDGEMENT_POINTS: Record<Judgement, number> = {
   good: 70,
   ok: 30,
   miss: 0,
+};
+
+const JUDGEMENT_LABEL: Record<Judgement, string> = {
+  perfect: "¡Perfecto!",
+  good: "Bien",
+  ok: "Flojo",
+  miss: "Fallo",
 };
 
 interface LiveNote {
@@ -35,14 +45,22 @@ interface LiveNote {
 export function mountGame(container: HTMLElement): () => void {
   container.innerHTML = `
     <div class="page">
-      <h1>J-Drums — Práctica</h1>
+      <h2 class="view-title">Práctica</h2>
       <p class="subtitle">Toca sobre el patrón. Calibra tu kit primero en la pestaña Calibración.</p>
 
       <div id="device-selector"></div>
 
       <section class="panel">
-        <label for="lesson-select">Lección</label>
-        <select id="lesson-select"></select>
+        <div class="lesson-row">
+          <div>
+            <label for="lesson-select">Lección</label>
+            <select id="lesson-select"></select>
+          </div>
+          <div class="best-score">
+            <span class="best-score__label">Mejor puntaje</span>
+            <span class="best-score__value" id="best-score-value">—</span>
+          </div>
+        </div>
 
         <div class="game-options">
           <div class="orientation-toggle" role="group" aria-label="Dirección de las notas">
@@ -59,12 +77,23 @@ export function mountGame(container: HTMLElement): () => void {
           <button id="start-btn">Empezar</button>
           <div class="game-stats">
             <span>Puntaje: <b id="stat-score">0</b></span>
-            <span>Racha: <b id="stat-streak">0</b></span>
+            <span>Racha: <b id="stat-streak">0</b> <span id="stat-multiplier" class="multiplier"></span></span>
             <span>Precisión: <b id="stat-accuracy">—</b></span>
           </div>
         </div>
         <div class="progress-track"><div class="progress-fill" id="progress-fill"></div></div>
         <p id="game-message" class="status"></p>
+
+        <div id="results" class="results" hidden>
+          <h3 id="results-title"></h3>
+          <div class="results-grid">
+            <div class="results-stat"><span class="dot dot--perfect"></span>Perfecto <b id="res-perfect">0</b></div>
+            <div class="results-stat"><span class="dot dot--good"></span>Bien <b id="res-good">0</b></div>
+            <div class="results-stat"><span class="dot dot--ok"></span>Flojo <b id="res-ok">0</b></div>
+            <div class="results-stat"><span class="dot dot--miss"></span>Fallo <b id="res-miss">0</b></div>
+          </div>
+          <p id="results-summary"></p>
+        </div>
       </section>
 
       <section class="panel">
@@ -78,15 +107,26 @@ export function mountGame(container: HTMLElement): () => void {
   );
 
   const lessonSelect = container.querySelector<HTMLSelectElement>("#lesson-select")!;
+  const bestScoreValueEl = container.querySelector<HTMLSpanElement>("#best-score-value")!;
   const startBtn = container.querySelector<HTMLButtonElement>("#start-btn")!;
   const messageEl = container.querySelector<HTMLParagraphElement>("#game-message")!;
   const lanesEl = container.querySelector<HTMLDivElement>("#lanes")!;
   const scoreEl = container.querySelector<HTMLElement>("#stat-score")!;
   const streakEl = container.querySelector<HTMLElement>("#stat-streak")!;
+  const multiplierEl = container.querySelector<HTMLElement>("#stat-multiplier")!;
   const accuracyEl = container.querySelector<HTMLElement>("#stat-accuracy")!;
   const progressFillEl = container.querySelector<HTMLDivElement>("#progress-fill")!;
   const metronomeToggle = container.querySelector<HTMLInputElement>("#metronome-toggle")!;
   const orientBtns = container.querySelectorAll<HTMLButtonElement>(".orient-btn");
+  const resultsEl = container.querySelector<HTMLDivElement>("#results")!;
+  const resultsTitleEl = container.querySelector<HTMLHeadingElement>("#results-title")!;
+  const resultsSummaryEl = container.querySelector<HTMLParagraphElement>("#results-summary")!;
+  const resultCountEls: Record<Judgement, HTMLElement> = {
+    perfect: container.querySelector<HTMLElement>("#res-perfect")!,
+    good: container.querySelector<HTMLElement>("#res-good")!,
+    ok: container.querySelector<HTMLElement>("#res-ok")!,
+    miss: container.querySelector<HTMLElement>("#res-miss")!,
+  };
 
   for (const chart of LESSONS) {
     const option = document.createElement("option");
@@ -106,10 +146,18 @@ export function mountGame(container: HTMLElement): () => void {
   let bestStreak = 0;
   let judgedCount = 0;
   let hitCount = 0;
+  let judgementCounts: Record<Judgement, number> = { perfect: 0, good: 0, ok: 0, miss: 0 };
   let audioCtx: AudioContext | null = null;
 
   function currentChart(): Chart {
     return LESSONS.find((c) => c.id === lessonSelect.value) ?? LESSONS[0];
+  }
+
+  function renderBestScore(): void {
+    const best = getBestScore(currentChart().id);
+    bestScoreValueEl.textContent = best
+      ? `${best.bestScore} pts · ${best.bestAccuracy}% · racha ${best.bestStreak}`
+      : "—";
   }
 
   function buildLanes(chart: Chart): void {
@@ -149,14 +197,32 @@ export function mountGame(container: HTMLElement): () => void {
     bestStreak = 0;
     judgedCount = 0;
     hitCount = 0;
+    judgementCounts = { perfect: 0, good: 0, ok: 0, miss: 0 };
     updateStats();
     progressFillEl.style.width = "0%";
+    resultsEl.hidden = true;
+  }
+
+  function currentMultiplier(): number {
+    return Math.min(MAX_MULTIPLIER, 1 + Math.floor(streak / COMBO_STEP));
   }
 
   function updateStats(): void {
     scoreEl.textContent = String(score);
     streakEl.textContent = String(streak);
+    const multiplier = currentMultiplier();
+    multiplierEl.textContent = multiplier > 1 ? `x${multiplier}` : "";
     accuracyEl.textContent = judgedCount === 0 ? "—" : `${Math.round((hitCount / judgedCount) * 100)}%`;
+  }
+
+  function spawnPopup(note: LiveNote, judgement: Judgement, points: number): void {
+    const lane = note.el.parentElement;
+    if (!lane) return;
+    const popup = document.createElement("span");
+    popup.className = `judgement-popup judgement-popup--${judgement} judgement-popup--${orientation}`;
+    popup.textContent = points > 0 ? `${JUDGEMENT_LABEL[judgement]} +${points}` : JUDGEMENT_LABEL[judgement];
+    lane.appendChild(popup);
+    window.setTimeout(() => popup.remove(), 650);
   }
 
   function judgeNote(note: LiveNote, judgement: Judgement): void {
@@ -164,15 +230,21 @@ export function mountGame(container: HTMLElement): () => void {
     note.el.style.backgroundColor = "";
     note.el.classList.add(`note--${judgement}`, "note--fade");
 
-    score += JUDGEMENT_POINTS[judgement];
+    judgementCounts[judgement] += 1;
     judgedCount += 1;
+
+    let points = 0;
     if (judgement === "miss") {
       streak = 0;
     } else {
+      points = JUDGEMENT_POINTS[judgement] * currentMultiplier();
+      score += points;
       hitCount += 1;
       streak += 1;
       bestStreak = Math.max(bestStreak, streak);
     }
+
+    spawnPopup(note, judgement, points);
     updateStats();
 
     window.setTimeout(() => note.el.remove(), 250);
@@ -260,8 +332,19 @@ export function mountGame(container: HTMLElement): () => void {
     startBtn.disabled = false;
     lessonSelect.disabled = false;
     orientBtns.forEach((btn) => (btn.disabled = false));
+
     const accuracy = judgedCount === 0 ? 0 : Math.round((hitCount / judgedCount) * 100);
-    messageEl.textContent = `Terminado. Precisión ${accuracy}% · racha máxima ${bestStreak}.`;
+    const previousBest = getBestScore(currentChart().id);
+    const result = recordScore(currentChart().id, score, accuracy, bestStreak);
+    const isNewBest = !previousBest || result.bestScore === score;
+
+    resultsTitleEl.textContent = isNewBest ? "¡Nuevo mejor puntaje!" : "Lección terminada";
+    for (const judgement of Object.keys(resultCountEls) as Judgement[]) {
+      resultCountEls[judgement].textContent = String(judgementCounts[judgement]);
+    }
+    resultsSummaryEl.textContent = `${score} puntos · ${accuracy}% de precisión · racha máxima ${bestStreak}.`;
+    resultsEl.hidden = false;
+    renderBestScore();
   }
 
   function getAudioContext(): AudioContext {
@@ -309,9 +392,14 @@ export function mountGame(container: HTMLElement): () => void {
     });
   });
 
-  lessonSelect.addEventListener("change", () => buildLanes(currentChart()));
+  lessonSelect.addEventListener("change", () => {
+    buildLanes(currentChart());
+    renderBestScore();
+    resultsEl.hidden = true;
+  });
 
   buildLanes(currentChart());
+  renderBestScore();
 
   const unsubscribeEvents = midiHub.onEvent(handleMidiEvent);
 

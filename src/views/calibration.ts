@@ -9,7 +9,7 @@ const AUTO_ADVANCE_MS = 1200;
 export function mountCalibration(container: HTMLElement): () => void {
   container.innerHTML = `
     <div class="page">
-      <h1>J-Drums — Calibración</h1>
+      <h2 class="view-title">Calibración</h2>
       <p class="subtitle">Toca cada pieza cuando se te indique. Se guarda la nota que reciba la app.</p>
 
       <div id="device-selector"></div>
